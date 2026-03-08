@@ -85,3 +85,17 @@ button.recording {
     50% { transform: scale(1.05); }
     100% { transform: scale(1); }
 }
+#status {
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+.processing {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1 }
+    50% { opacity: 0.5 }
+    100% { opacity: 1 }
+}

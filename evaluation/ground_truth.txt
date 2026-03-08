@@ -1,0 +1,5 @@
+motor overheating at unit 5 | motor | unit 5 | overheating
+pump leakage at unit 3 | pump | unit 3 | leakage
+compressor malfunction at unit 4 | compressor | unit 4 | malfunction
+valve leakage at unit 2 | valve | unit 2 | leakage
+motor overheat at unit 6 | motor | unit 6 | overheating

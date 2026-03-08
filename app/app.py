@@ -1,23 +1,47 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session
-from audio_handler import save_audio_file
-from stt_service import transcribe_audio
-from semantic_service import extract_structured_data
-from tts_service import generate_confirmation_speech
-from report_storage import save_report_to_excel
-from datetime import datetime
+import sys
 import os
+
+# Allow imports from project root
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from flask import Flask, render_template, request, jsonify, send_from_directory, session
+from datetime import datetime
 import uuid
 import time
 import threading
 
-app = Flask(__name__)
-app.secret_key = "incident_voice_key"
+from utils.audio_handler import save_audio_file
+from services.stt_service import transcribe_audio
+from services.semantic_service import extract_structured_data
+from services.tts_service import generate_confirmation_speech
+from report_storage import save_report_to_excel
 
-TTS_FOLDER = os.path.join("static", "tts_audio")
+
+# ---------------- PATH SETUP ----------------
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TTS_FOLDER = os.path.join(STATIC_DIR, "tts_audio")
+
 os.makedirs(TTS_FOLDER, exist_ok=True)
+
+
+# ---------------- FLASK INIT ----------------
+
+app = Flask(
+    __name__,
+    template_folder=TEMPLATE_DIR,
+    static_folder=STATIC_DIR
+)
+
+app.secret_key = "incident_voice_key"
 
 MANDATORY_FIELDS = ["equipment", "location_or_unit", "incident_summary"]
 
+
+# ---------------- RESET CONVERSATION ----------------
 
 def reset_conversation():
 
@@ -37,6 +61,8 @@ def reset_conversation():
     }
 
 
+# ---------------- AUTO DATE TIME ----------------
+
 def auto_fill_datetime(data):
 
     now = datetime.now()
@@ -50,6 +76,8 @@ def auto_fill_datetime(data):
     return data
 
 
+# ---------------- VALIDATION ----------------
+
 def is_valid(data):
 
     for field in MANDATORY_FIELDS:
@@ -58,6 +86,8 @@ def is_valid(data):
 
     return True
 
+
+# ---------------- CLARIFICATION ----------------
 
 def clarification_question(data):
 
@@ -73,6 +103,8 @@ def clarification_question(data):
     return ""
 
 
+# ---------------- HOME PAGE ----------------
+
 @app.route("/")
 def home():
 
@@ -81,6 +113,8 @@ def home():
 
     return render_template("index.html")
 
+
+# ---------------- MAIN AUDIO API ----------------
 
 @app.route("/upload_audio", methods=["POST"])
 def upload_audio():
@@ -92,22 +126,20 @@ def upload_audio():
 
     audio_file = request.files["audio"]
 
-    webm_path = save_audio_file(audio_file)
+    audio_stream = save_audio_file(audio_file)
 
-    transcript = transcribe_audio(webm_path)
+    transcript = transcribe_audio(audio_stream)
 
     transcript = transcript.lower().strip()
 
     if "conversation_text" not in session:
         reset_conversation()
 
-    # append transcript to conversation memory
     session["conversation_text"] += " " + transcript
 
     full_text = session["conversation_text"]
 
-    # extract structured data from full conversation
-    new_data = extract_structured_data(full_text)
+    new_data = extract_structured_data(transcript)
 
     conversation = session["conversation_data"]
 
@@ -119,6 +151,7 @@ def upload_audio():
 
     session["conversation_data"] = conversation
 
+    # If mandatory fields missing
     if not is_valid(conversation):
 
         question = clarification_question(conversation)
@@ -130,24 +163,25 @@ def upload_audio():
             "clarification_question": question
         })
 
-    # Save report
+    # Save report asynchronously
     threading.Thread(
-      target=save_report_to_excel,
-      args=(conversation,),
-      daemon=True
+        target=save_report_to_excel,
+        args=(conversation,),
+        daemon=True
     ).start()
 
+    # Generate TTS confirmation
     audio_bytes, confirmation_text = generate_confirmation_speech(conversation)
 
     filename = f"{uuid.uuid4()}.mp3"
-    path = os.path.join(TTS_FOLDER, filename)
+    file_path = os.path.join(TTS_FOLDER, filename)
 
-    with open(path, "wb") as f:
+    with open(file_path, "wb") as f:
         f.write(audio_bytes)
 
-    total = round(time.time() - start, 2)
+    total_time = round(time.time() - start, 2)
 
-    print("Processing time:", total)
+    print("Processing time:", total_time)
 
     result = {
         "transcript": full_text,
@@ -155,19 +189,36 @@ def upload_audio():
         "needs_clarification": False,
         "confirmation_text": confirmation_text,
         "tts_audio_url": f"/tts_audio/{filename}",
-        "processing_time": total
+        "processing_time": total_time
     }
 
-    # reset conversation AFTER saving
     reset_conversation()
 
     return jsonify(result)
 
 
+# ---------------- SERVE TTS AUDIO ----------------
+
 @app.route("/tts_audio/<filename>")
 def serve_tts(filename):
+
     return send_from_directory(TTS_FOLDER, filename)
 
 
+# ---------------- MODEL WARMUP ----------------
+
+def warmup():
+    try:
+        print("Warming up extraction model...")
+        extract_structured_data("motor overheating at unit 5")
+    except:
+        pass
+
+
+# ---------------- MAIN ----------------
+
 if __name__ == "__main__":
+
+    warmup()
+
     app.run(debug=False)
