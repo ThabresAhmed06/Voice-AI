@@ -157,7 +157,7 @@ def upload_audio():
         question = clarification_question(conversation)
 
         return jsonify({
-            "transcript": full_text,
+            "transcript": transcript,
             "structured": conversation,
             "needs_clarification": True,
             "clarification_question": question
@@ -184,7 +184,7 @@ def upload_audio():
     print("Processing time:", total_time)
 
     result = {
-        "transcript": full_text,
+        "transcript": transcript,
         "structured": conversation,
         "needs_clarification": False,
         "confirmation_text": confirmation_text,

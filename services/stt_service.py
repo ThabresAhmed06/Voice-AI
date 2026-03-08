@@ -19,6 +19,7 @@ def transcribe_audio(audio_stream):
     response = client.audio.transcriptions.create(
         model="whisper-1",
         file=audio_stream,
+        language="en",
         temperature=0
     )
 

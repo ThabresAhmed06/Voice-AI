@@ -37,6 +37,9 @@ def safe_json(text):
 
 def normalize_incident(text):
 
+    if not text:
+        return text
+
     text = text.lower()
 
     if "overheat" in text:
@@ -54,6 +57,26 @@ def normalize_incident(text):
 # ---------------- FAST RULE PARSER ----------------
 
 def fast_rule_parser(text):
+    text = text.lower()
+    result = {}
+
+    # ... (keep your existing reporter, department, and equipment logic) ...
+
+    # ---------------- UPDATED SEVERITY LOGIC ----------------
+    # High / Critical Keywords
+    if any(word in text for word in ["critical", "emergency", "explosion", "danger", "smoke", "fire", "sparks", "injured"]):
+        result["severity"] = "High"
+    
+    # Medium / Warning Keywords
+    elif any(word in text for word in ["leak", "malfunction", "warning", "overheat", "urgent", "vibration"]):
+        result["severity"] = "Medium"
+    
+    # Default / Low Keywords
+    else:
+        result["severity"] = "Low"
+
+    # ... (keep your existing time logic) ...
+    return result
 
     text = text.lower()
 
@@ -97,6 +120,16 @@ def fast_rule_parser(text):
 
     elif "malfunction" in text:
         result["incident_summary"] = "malfunction"
+
+    # severity
+    if "critical" in text or "emergency" in text or "explosion" in text or "danger" in text:
+        result["severity"] = "critical"
+    elif "leak" in text or "malfunction" in text:
+        result["severity"] = "high"
+    elif "overheat" in text or "heat" in text:
+        result["severity"] = "medium"
+    else:
+        result["severity"] = "low"
 
     # time
     time_match = re.search(r"\d+\s*(am|pm)", text)
@@ -147,15 +180,13 @@ Text:
 # ---------------- MAIN EXTRACTION ----------------
 
 def extract_structured_data(transcript):
-
     transcript = transcript.lower()
 
-    # 1️⃣ fast rule parser
+    # 1️⃣ Fast rule parser
     rule_data = fast_rule_parser(transcript)
 
     # if mandatory fields found → skip LLM
     if all(field in rule_data for field in MANDATORY_FIELDS):
-
         result = {
             "reporter_name": rule_data.get("reporter_name", ""),
             "department": rule_data.get("department", ""),
@@ -164,41 +195,23 @@ def extract_structured_data(transcript):
             "location_or_unit": rule_data.get("location_or_unit", ""),
             "incident_date": "",
             "incident_time": rule_data.get("incident_time", ""),
-            "severity": "",
+            "severity": rule_data.get("severity", "Low"), # <--- CHANGED FROM "" TO rule_data
             "measured_parameters": "",
             "remarks": ""
         }
-
         return result
 
     # 2️⃣ otherwise use LLM
     data = llm_extract(transcript)
-
-    fields = [
-        "reporter_name",
-        "department",
-        "equipment",
-        "incident_summary",
-        "location_or_unit",
-        "incident_date",
-        "incident_time",
-        "severity",
-        "measured_parameters",
-        "remarks"
-    ]
-
-    result = {}
-
-    for f in fields:
-        result[f] = data.get(f, "")
-
-    # fallback rule parser
-    fallback = fast_rule_parser(transcript)
-
-    for k, v in fallback.items():
-        if not result.get(k):
-            result[k] = v
-
-    result["incident_summary"] = normalize_incident(result["incident_summary"])
+    
+    # ... (rest of your logic for LLM fallback) ...
+    
+    # Ensure severity is normalized even in LLM results
+    if result["severity"].lower() in ["critical", "high", "emergency"]:
+        result["severity"] = "High"
+    elif result["severity"].lower() in ["medium", "warning"]:
+        result["severity"] = "Medium"
+    else:
+        result["severity"] = "Low"
 
     return result
